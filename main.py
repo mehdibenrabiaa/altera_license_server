@@ -1,5 +1,5 @@
 from fastapi import FastAPI, Depends, HTTPException
-from sqlmodel import select
+from sqlmodel import Session, select
 from database import init_db, get_session
 from routes.license import router as license_router, verify_admin
 from dotenv import load_dotenv
@@ -52,8 +52,11 @@ class UpdateLicensePayload(BaseModel):
 
 # --- Admin: Create License ---
 @app.post("/admin/create-license")
-def create_license(payload: CreateLicensePayload, _=Depends(verify_admin)):
-    session = next(get_session())
+def create_license(
+    payload: CreateLicensePayload,
+    _=Depends(verify_admin),
+    session: Session = Depends(get_session),
+):
 
     existing = session.exec(select(License).where(License.key == payload.key)).first()
     if existing:
@@ -77,8 +80,8 @@ def update_license(
     license_key: str,
     payload: UpdateLicensePayload,
     _=Depends(verify_admin),
+    session: Session = Depends(get_session),
 ):
-    session = next(get_session())
     lic = session.exec(select(License).where(License.key == license_key)).first()
     if not lic:
         raise HTTPException(404, "License not found")
@@ -109,8 +112,9 @@ def update_license(
 
 # --- Admin: Delete License ---
 @app.delete("/admin/licenses/{license_key}")
-def delete_license(license_key: str, _=Depends(verify_admin)):
-    session = next(get_session())
+def delete_license(
+    license_key: str, _=Depends(verify_admin), session: Session = Depends(get_session)
+):
     lic = session.exec(select(License).where(License.key == license_key)).first()
     if not lic:
         raise HTTPException(404, "License not found")
@@ -132,8 +136,7 @@ def delete_license(license_key: str, _=Depends(verify_admin)):
 
 # --- Admin: View Licenses Table ---
 @app.get("/admin/licenses")
-def list_licenses(_=Depends(verify_admin)):
-    session = next(get_session())
+def list_licenses(_=Depends(verify_admin), session: Session = Depends(get_session)):
     licenses = session.exec(select(License)).all()
     return {
         "count": len(licenses),
@@ -153,8 +156,7 @@ def list_licenses(_=Depends(verify_admin)):
 
 # --- Admin: View Activations Table ---
 @app.get("/admin/activations")
-def list_activations(_=Depends(verify_admin)):
-    session = next(get_session())
+def list_activations(_=Depends(verify_admin), session: Session = Depends(get_session)):
     activations = session.exec(select(Activation)).all()
     return {
         "count": len(activations),
@@ -163,7 +165,6 @@ def list_activations(_=Depends(verify_admin)):
                 "id": act.id,
                 "license_key": act.license_key,
                 "machine_id": act.machine_id,
-                "username": act.username,
                 "activated_at": str(act.activated_at),
                 "revoked": act.revoked,
             }
@@ -174,8 +175,7 @@ def list_activations(_=Depends(verify_admin)):
 
 # --- Admin: Full Overview (both tables joined) ---
 @app.get("/admin/overview")
-def overview(_=Depends(verify_admin)):
-    session = next(get_session())
+def overview(_=Depends(verify_admin), session: Session = Depends(get_session)):
     licenses = session.exec(select(License)).all()
     activations = session.exec(select(Activation)).all()
 
@@ -195,7 +195,6 @@ def overview(_=Depends(verify_admin)):
                 "activations": [
                     {
                         "machine_id": a.machine_id,
-                        "username": a.username,
                         "activated_at": str(a.activated_at),
                         "revoked": a.revoked,
                     }
