@@ -187,6 +187,7 @@ def overview(_=Depends(verify_admin), session: Session = Depends(get_session)):
             {
                 "key": lic.key,
                 "email": lic.email,
+                 "username": lic.username,
                 "plan": lic.plan,
                 "expiry": str(lic.expiry),
                 "max_seats": lic.max_seats,
@@ -208,3 +209,4 @@ def overview(_=Depends(verify_admin), session: Session = Depends(get_session)):
         "total_activations": len(activations),
         "licenses": result,
     }
+
