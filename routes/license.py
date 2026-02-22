@@ -5,7 +5,7 @@ from jose import jwt, JWTError
 from pydantic import BaseModel
 from typing import Optional
 from database import get_session
-from models import License, Activation
+from models import License, Activation, BannedMachine
 import os
 
 
@@ -25,7 +25,7 @@ def verify_admin(x_admin_key: str = Header(...)):
 class ActivateRequest(BaseModel):
     license_key: str
     machine_id: str
-    username: Optional[str] = None  # Windows username sent by the client
+    username: Optional[str] = None
 
 
 class ValidateRequest(BaseModel):
@@ -56,9 +56,20 @@ def make_token(license: License, machine_id: str) -> str:
     return jwt.encode(payload, SECRET, algorithm=ALGORITHM)
 
 
+def check_banned(machine_id: str, session: Session):
+    banned = session.exec(
+        select(BannedMachine).where(BannedMachine.machine_id == machine_id)
+    ).first()
+    if banned:
+        raise HTTPException(403, "This machine has been banned")
+
+
 # --- Routes ---
 @router.post("/activate")
 def activate(req: ActivateRequest, session: Session = Depends(get_session)):
+    # Check if machine is banned
+    check_banned(req.machine_id, session)
+
     # Look up the license
     lic = session.exec(select(License).where(License.key == req.license_key)).first()
     if not lic:
@@ -78,7 +89,6 @@ def activate(req: ActivateRequest, session: Session = Depends(get_session)):
     ).first()
 
     if existing:
-        # Already activated — update username if provided and return token
         if req.username:
             existing.username = req.username
             session.add(existing)
@@ -101,11 +111,11 @@ def activate(req: ActivateRequest, session: Session = Depends(get_session)):
     if len(active_seats) >= lic.max_seats:
         raise HTTPException(403, f"Seat limit reached ({lic.max_seats} seats)")
 
-    # Create new activation, storing the Windows username
+    # Create new activation
     activation = Activation(
         license_key=req.license_key,
         machine_id=req.machine_id,
-        username=req.username,  # <-- saved here
+        username=req.username,
     )
     session.add(activation)
     session.commit()
@@ -120,6 +130,13 @@ def activate(req: ActivateRequest, session: Session = Depends(get_session)):
 
 @router.post("/validate", response_model=ValidateResponse)
 def validate(req: ValidateRequest, session: Session = Depends(get_session)):
+    # Check if machine is banned
+    banned = session.exec(
+        select(BannedMachine).where(BannedMachine.machine_id == req.machine_id)
+    ).first()
+    if banned:
+        return ValidateResponse(valid=False, plan="", email="", message="This machine has been banned")
+
     try:
         payload = jwt.decode(req.token, SECRET, algorithms=[ALGORITHM])
     except JWTError:
