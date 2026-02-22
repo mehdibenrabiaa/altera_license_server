@@ -1,16 +1,17 @@
+from dotenv import load_dotenv
+
+load_dotenv()  # ← must be before any local imports
+
 from fastapi import FastAPI, Depends, HTTPException
 from sqlmodel import Session, select
-from database import init_db, get_session
+from database import init_db, get_session  # ← now DATABASE_URL is already set
 from routes.license import router as license_router, verify_admin
-from dotenv import load_dotenv
 from pydantic import BaseModel
 from typing import Optional
 from models import License, Activation
 from datetime import date
 from fastapi.middleware.cors import CORSMiddleware
 
-
-load_dotenv()
 
 app = FastAPI(title="Altera License Server")
 origins = [
@@ -209,6 +210,3 @@ def overview(_=Depends(verify_admin), session: Session = Depends(get_session)):
         "total_activations": len(activations),
         "licenses": result,
     }
-
-
-
