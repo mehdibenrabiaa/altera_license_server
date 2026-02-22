@@ -8,7 +8,7 @@ from database import init_db, get_session  # ← now DATABASE_URL is already set
 from routes.license import router as license_router, verify_admin
 from pydantic import BaseModel
 from typing import Optional
-from models import License, Activation
+from models import License, Activation, BannedMachine
 from datetime import date
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -51,6 +51,11 @@ class UpdateLicensePayload(BaseModel):
     max_seats: Optional[int] = None
 
 
+class BanPayload(BaseModel):
+    machine_id: str
+    reason: Optional[str] = None
+
+
 # --- Admin: Create License ---
 @app.post("/admin/create-license")
 def create_license(
@@ -58,7 +63,6 @@ def create_license(
     _=Depends(verify_admin),
     session: Session = Depends(get_session),
 ):
-
     existing = session.exec(select(License).where(License.key == payload.key)).first()
     if existing:
         raise HTTPException(400, "A license with this key already exists")
@@ -120,7 +124,6 @@ def delete_license(
     if not lic:
         raise HTTPException(404, "License not found")
 
-    # Also delete all associated activations
     activations = session.exec(
         select(Activation).where(Activation.license_key == license_key)
     ).all()
@@ -209,4 +212,59 @@ def overview(_=Depends(verify_admin), session: Session = Depends(get_session)):
         "total_licenses": len(licenses),
         "total_activations": len(activations),
         "licenses": result,
+    }
+
+
+# --- Admin: Ban a machine ---
+@app.post("/admin/bans")
+def ban_machine(
+    payload: BanPayload,
+    _=Depends(verify_admin),
+    session: Session = Depends(get_session),
+):
+    existing = session.exec(
+        select(BannedMachine).where(BannedMachine.machine_id == payload.machine_id)
+    ).first()
+    if existing:
+        raise HTTPException(400, "Machine is already banned")
+
+    ban = BannedMachine(machine_id=payload.machine_id, reason=payload.reason)
+    session.add(ban)
+    session.commit()
+    return {"ok": True, "message": f"Machine {payload.machine_id} has been banned"}
+
+
+# --- Admin: Unban a machine ---
+@app.delete("/admin/bans/{machine_id}")
+def unban_machine(
+    machine_id: str,
+    _=Depends(verify_admin),
+    session: Session = Depends(get_session),
+):
+    ban = session.exec(
+        select(BannedMachine).where(BannedMachine.machine_id == machine_id)
+    ).first()
+    if not ban:
+        raise HTTPException(404, "Machine is not banned")
+
+    session.delete(ban)
+    session.commit()
+    return {"ok": True, "message": f"Machine {machine_id} has been unbanned"}
+
+
+# --- Admin: List all banned machines ---
+@app.get("/admin/bans")
+def list_bans(_=Depends(verify_admin), session: Session = Depends(get_session)):
+    bans = session.exec(select(BannedMachine)).all()
+    return {
+        "count": len(bans),
+        "banned_machines": [
+            {
+                "id": b.id,
+                "machine_id": b.machine_id,
+                "reason": b.reason,
+                "banned_at": str(b.banned_at),
+            }
+            for b in bans
+        ],
     }
