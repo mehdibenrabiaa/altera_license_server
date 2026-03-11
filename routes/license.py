@@ -135,7 +135,7 @@ def validate(req: ValidateRequest, session: Session = Depends(get_session)):
         select(BannedMachine).where(BannedMachine.machine_id == req.machine_id)
     ).first()
     if banned:
-        return ValidateResponse(valid=False, plan="", email="", message="This machine has been banned")
+        return ValidateResponse(valid=False, plan="", email="", message="It looks like this device is currently unable to access the service.")
 
     try:
         payload = jwt.decode(req.token, SECRET, algorithms=[ALGORITHM])
@@ -197,3 +197,4 @@ def deactivate(req: ActivateRequest, session: Session = Depends(get_session)):
     session.add(activation)
     session.commit()
     return {"ok": True, "message": "Deactivated successfully"}
+
